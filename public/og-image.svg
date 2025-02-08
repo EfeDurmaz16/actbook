@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#4F46E5"/>
+  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-size="120" font-weight="bold" fill="white">
+    ActBook
+  </text>
+  <path d="M550 400V200h60v200h-60zm-120 0V200h60v200h-60z" fill="white"/>
+</svg>
+
