@@ -3,51 +3,62 @@
 import { revalidatePath } from "next/cache"
 import stringSimilarity from "string-similarity-js"
 import type { Intent } from "./types"
+import { prisma } from "./db"
 
-const intents: Intent[] = [
-  { id: "1", text: "Looking for a new game to play", user: "Alice" },
-  { id: "2", text: "Need an easy meal to cook", user: "Bob" },
-  { id: "3", text: "Searching for a good book to read", user: "Charlie" },
-  { id: "4", text: "Want to learn a new programming language", user: "David" },
-  { id: "5", text: "Seeking recommendations for a weekend getaway", user: "Eve" },
-  { id: "6", text: "Looking for a new hobby to try", user: "Frank" },
-  { id: "7", text: "Need tips for improving productivity", user: "Grace" },
-  { id: "8", text: "Searching for a good workout routine", user: "Henry" },
-  { id: "9", text: "Want to start a vegetable garden", user: "Ivy" },
-  { id: "10", text: "Looking for volunteer opportunities in my area", user: "Jack" },
-  { id: "11", text: "Need advice on adopting a pet", user: "Kate" },
-  { id: "12", text: "Searching for a new podcast to listen to", user: "Liam" },
-  { id: "13", text: "Want to learn how to meditate", user: "Mia" },
-  { id: "14", text: "Looking for tips on reducing plastic waste", user: "Noah" },
-  { id: "15", text: "Need ideas for a creative project", user: "Olivia" },
-]
+// Helper function to sanitize input and prevent XSS
+function sanitizeInput(input: string): string {
+  // Basic sanitization: Replace potentially dangerous characters
+  return input
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 export async function searchIntents(query: string): Promise<Intent[]> {
   console.log("Searching intents for query:", query)
-  console.log("Current intents:", intents)
 
   try {
-    if (!query) {
+    // Sanitize the search query
+    const sanitizedQuery = sanitizeInput(query || "");
+    
+    // Get all intents from database for similarity search
+    const dbIntents = await prisma.intent.findMany({
+      include: {
+        user: true,
+      },
+    });
+
+    if (!sanitizedQuery) {
       console.log("Empty query, returning all intents")
-      return intents
+      // Transform to the expected format
+      return dbIntents.map((intent) => ({
+        id: intent.id,
+        text: intent.text,
+        user: intent.user.username,
+      }));
     }
 
-    const queryWords = query.toLowerCase().split(/\s+/)
+    const queryWords = sanitizedQuery.toLowerCase().split(/\s+/)
 
-    const similarities = intents.map((intent) => {
-      const intentWords = intent.text.toLowerCase().split(/\s+/)
+    const similarities = dbIntents.map((dbIntent) => {
+      const intentWords = dbIntent.text.toLowerCase().split(/\s+/)
 
       // Calculate exact word matches
       const exactMatches = queryWords.filter((word) => intentWords.includes(word)).length
 
       // Calculate string similarity
-      const similarity = stringSimilarity(query.toLowerCase(), intent.text.toLowerCase())
+      const similarity = stringSimilarity(sanitizedQuery.toLowerCase(), dbIntent.text.toLowerCase())
 
       // Combine exact matches and string similarity for a final score
       const combinedScore = (exactMatches / queryWords.length) * 0.7 + similarity * 0.3
 
       return {
-        intent,
+        intent: {
+          id: dbIntent.id,
+          text: dbIntent.text,
+          user: dbIntent.user.username,
+        },
         similarity: combinedScore,
       }
     })
@@ -63,14 +74,13 @@ export async function searchIntents(query: string): Promise<Intent[]> {
     console.log("Search results:", results)
     return results
   } catch (error) {
-    console.error("Error in semantic search:", error)
-    return intents // Return all intents as fallback
+    console.error("Error in database search:", error)
+    return [] // Return empty array in case of error
   }
 }
 
 export async function createIntent(text: string, username: string): Promise<{ success: boolean; message: string }> {
   console.log("Creating new intent:", text)
-  console.log("Current intents before creation:", intents)
 
   try {
     if (!text || text.trim().length === 0) {
@@ -78,15 +88,37 @@ export async function createIntent(text: string, username: string): Promise<{ su
       return { success: false, message: "Intent text cannot be empty" }
     }
 
-    const newIntent: Intent = {
-      id: (intents.length + 1).toString(),
-      text: text.trim(),
-      user: username,
-    }
-    intents.push(newIntent)
+    // Sanitize inputs to prevent XSS
+    const sanitizedText = sanitizeInput(text.trim());
+    const sanitizedUsername = sanitizeInput(username);
 
-    console.log("New intent created successfully:", newIntent)
-    console.log("Updated intents array:", intents)
+    // Find the user by username
+    let user = await prisma.user.findUnique({
+      where: { username: sanitizedUsername },
+    });
+
+    // If user doesn't exist, create one
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          username: sanitizedUsername,
+          password: 'temporary', // This should be handled properly in a real application
+        },
+      });
+    }
+
+    // Create the intent in the database
+    const newIntent = await prisma.intent.create({
+      data: {
+        text: sanitizedText,
+        userId: user.id,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    console.log("New intent created successfully in database:", newIntent)
 
     revalidatePath("/search")
     return { success: true, message: "Intent created successfully" }
@@ -97,8 +129,30 @@ export async function createIntent(text: string, username: string): Promise<{ su
 }
 
 export async function getAllIntents(): Promise<Intent[]> {
-  console.log("Getting all intents")
-  console.log("Current intents:", intents)
-  return intents
+  console.log("Getting all intents from database")
+  
+  try {
+    const dbIntents = await prisma.intent.findMany({
+      include: {
+        user: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+    
+    // Transform to the expected format
+    const intents = dbIntents.map((intent) => ({
+      id: intent.id,
+      text: intent.text,
+      user: intent.user.username,
+    }));
+    
+    console.log("Retrieved intents from database:", intents)
+    return intents;
+  } catch (error) {
+    console.error("Error fetching intents from database:", error);
+    return []; // Return empty array in case of error
+  }
 }
 

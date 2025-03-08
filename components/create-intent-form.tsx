@@ -8,6 +8,18 @@ import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/AuthContext"
 
+// Helper function to get CSRF token
+async function getCsrfToken(): Promise<string | null> {
+  try {
+    const response = await fetch('/api/csrf');
+    const data = await response.json();
+    return data.csrfToken;
+  } catch (error) {
+    console.error('Error fetching CSRF token:', error);
+    return null;
+  }
+}
+
 export default function CreateIntentForm({
   initialQuery,
   onSuccess,
@@ -15,6 +27,7 @@ export default function CreateIntentForm({
   const [intent, setIntent] = useState(initialQuery || "")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [message, setMessage] = useState("")
+  const [csrfToken, setCsrfToken] = useState<string | null>(null)
   const router = useRouter()
   const { username } = useAuth()
 
@@ -22,6 +35,14 @@ export default function CreateIntentForm({
     if (initialQuery !== undefined) {
       setIntent(initialQuery)
     }
+    
+    // Fetch CSRF token on component mount
+    const fetchCsrfToken = async () => {
+      const token = await getCsrfToken();
+      setCsrfToken(token);
+    };
+    
+    fetchCsrfToken();
   }, [initialQuery])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,7 +58,24 @@ export default function CreateIntentForm({
 
     try {
       console.log("Submitting new intent:", intent)
+      
+      // For server actions, use the action directly
       const result = await createIntent(intent, username || "Anonymous")
+      
+      // For API routes, use fetch with CSRF token
+      // const response = await fetch('/api/intents', {
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //     'X-CSRF-Token': csrfToken || '',
+      //   },
+      //   body: JSON.stringify({
+      //     text: intent,
+      //     username: username || "Anonymous"
+      //   }),
+      // });
+      // const result = await response.json();
+      
       if (result.success) {
         setIntent("")
         setMessage("Intent created successfully!")

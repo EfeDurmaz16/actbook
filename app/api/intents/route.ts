@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import stringSimilarity from "string-similarity-js";
+import { csrfProtection } from "@/lib/csrf";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -84,7 +85,8 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+// Original POST handler
+async function handlePost(request: NextRequest) {
   try {
     const { text, username } = await request.json();
 
@@ -95,16 +97,29 @@ export async function POST(request: Request) {
       );
     }
 
+    // Basic sanitization
+    const sanitizedText = text
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+    const sanitizedUsername = username
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
     // Find the user by username
     let user = await prisma.user.findUnique({
-      where: { username },
+      where: { username: sanitizedUsername },
     });
 
     // If user doesn't exist, create one
     if (!user) {
       user = await prisma.user.create({
         data: {
-          username,
+          username: sanitizedUsername,
           password: 'temporary', // This should be handled properly in a real application
         },
       });
@@ -113,7 +128,7 @@ export async function POST(request: Request) {
     // Create the intent
     const newIntent = await prisma.intent.create({
       data: {
-        text: text.trim(),
+        text: sanitizedText,
         userId: user.id,
       },
       include: {
@@ -136,4 +151,7 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-} 
+}
+
+// Apply CSRF protection to the POST handler
+export const POST = csrfProtection(handlePost); 
