@@ -9,9 +9,10 @@ generator client {
   binaryTargets = ["native", "rhel-openssl-1.0.x"]
 }
 
+// Temporarily using SQLite for deployment
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model User {
