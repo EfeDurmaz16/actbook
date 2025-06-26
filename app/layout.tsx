@@ -4,6 +4,7 @@ import { Space_Mono } from "next/font/google"
 import type { ReactNode } from "react"
 import { AuthProvider } from "@/lib/AuthContext"
 import AuthMenu from "@/components/AuthMenu"
+import { Navigation } from "@/components/Navigation"
 
 const spaceMono = Space_Mono({
   weight: ["400", "700"],
@@ -12,8 +13,8 @@ const spaceMono = Space_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "ActBook",
-  description: "Find and share intents with others",
+  title: "ActBook - Connect Through Activities",
+  description: "Connect with people based on shared activities and interests",
   icons: {
     icon: [
       {
@@ -46,8 +47,20 @@ export default function RootLayout({
       </head>
       <body className={`${spaceMono.variable} font-mono bg-gray-100 min-h-screen`}>
         <AuthProvider>
-          <AuthMenu />
-          {children}
+          <div className="min-h-screen bg-background">
+            <header className="border-b bg-white">
+              <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+                <h1 className="text-2xl font-bold">ActBook</h1>
+                <div className="flex items-center space-x-4">
+                  <Navigation />
+                  <AuthMenu />
+                </div>
+              </div>
+            </header>
+            <main>
+              {children}
+            </main>
+          </div>
         </AuthProvider>
       </body>
     </html>

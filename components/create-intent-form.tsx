@@ -5,7 +5,6 @@ import { useState, useEffect } from "react"
 import { createIntent } from "@/lib/actions"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/AuthContext"
 
 // Helper function to get CSRF token
@@ -27,8 +26,6 @@ export default function CreateIntentForm({
   const [intent, setIntent] = useState(initialQuery || "")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [message, setMessage] = useState("")
-  const [csrfToken, setCsrfToken] = useState<string | null>(null)
-  const router = useRouter()
   const { username } = useAuth()
 
   useEffect(() => {
@@ -36,13 +33,6 @@ export default function CreateIntentForm({
       setIntent(initialQuery)
     }
     
-    // Fetch CSRF token on component mount
-    const fetchCsrfToken = async () => {
-      const token = await getCsrfToken();
-      setCsrfToken(token);
-    };
-    
-    fetchCsrfToken();
   }, [initialQuery])
 
   const handleSubmit = async (e: React.FormEvent) => {
