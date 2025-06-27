@@ -17,10 +17,10 @@ export default function AuthMenu() {
   const [signupPassword, setSignupPassword] = useState("")
   const [error, setError] = useState("")
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (loginUsername.trim() && loginPassword.trim()) {
-      const success = login(loginUsername, loginPassword)
+      const success = await login(loginUsername, loginPassword)
       if (success) {
         setShowLoginForm(false)
         setLoginUsername("")
@@ -32,10 +32,10 @@ export default function AuthMenu() {
     }
   }
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     if (signupUsername.trim() && signupPassword.trim()) {
-      const success = signup(signupUsername, signupPassword)
+      const success = await signup(signupUsername, signupPassword)
       if (success) {
         setShowSignupForm(false)
         setSignupUsername("")
@@ -48,7 +48,7 @@ export default function AuthMenu() {
   }
 
   return (
-    <div className="absolute top-4 right-4">
+    <div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="w-10 h-10 rounded-full p-0">

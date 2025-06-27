@@ -1,27 +1,55 @@
 import { HfInference } from '@huggingface/inference'
+import OpenAI from 'openai'
 
-const hf = new HfInference(process.env.HUGGINGFACE_API_KEY)
+function getOpenAIClient() {
+  return process.env.OPENAI_API_KEY ? new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  }) : null
+}
+
+function getHFClient() {
+  return process.env.HUGGINGFACE_API_KEY ? new HfInference(process.env.HUGGINGFACE_API_KEY) : null
+}
 
 export async function generateEmbedding(text: string): Promise<number[]> {
-  // Skip HuggingFace if no API key or insufficient permissions
-  if (!process.env.HUGGINGFACE_API_KEY) {
-    console.warn('No Hugging Face API key provided, skipping embedding generation')
-    return []
+  // Try OpenAI first (most reliable)
+  const openai = getOpenAIClient()
+  if (openai) {
+    try {
+      const response = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text,
+      })
+      
+      return response.data[0].embedding
+    } catch (error) {
+      console.warn('OpenAI embedding failed, trying Hugging Face:', error)
+    }
   }
 
-  try {
-    const response = await hf.featureExtraction({
-      model: 'sentence-transformers/all-MiniLM-L6-v2',
-      inputs: text,
-    })
+  // Try HuggingFace as fallback
+  const hf = getHFClient()
+  if (hf) {
+    try {
+      const response = await hf.featureExtraction({
+        model: 'BAAI/bge-small-en-v1.5',
+        inputs: text,
+      })
 
-    // The response is a nested array, we want the first (and only) embedding
-    return Array.isArray(response[0]) ? response[0] : response as number[]
-  } catch (error) {
-    console.warn('Error generating embedding (falling back to text similarity):', error)
-    // Fallback to empty embedding if service fails
-    return []
+      let embedding: number[]
+      if (Array.isArray(response) && Array.isArray(response[0])) {
+        embedding = response[0] as number[]
+      } else {
+        embedding = response as number[]
+      }
+      return embedding
+    } catch (error) {
+      console.warn('HuggingFace embedding failed:', error)
+    }
   }
+
+  console.warn('No embedding service available, falling back to text similarity')
+  return []
 }
 
 export function cosineSimilarity(vecA: number[], vecB: number[]): number {

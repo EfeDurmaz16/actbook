@@ -2,6 +2,7 @@ export interface Intent {
   id: string
   text: string
   user: string
+  userId?: string
   category?: string
   location?: string
   tags?: string[]
@@ -19,7 +20,7 @@ export interface User {
   bio?: string
   avatar?: string
   location?: string
-  interests?: string[]
+  interests: string[]
   isActive: boolean
   lastSeen: Date
   createdAt: Date

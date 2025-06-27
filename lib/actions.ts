@@ -16,34 +16,46 @@ function sanitizeInput(input: string): string {
     .replace(/'/g, '&#039;');
 }
 
-export async function searchIntents(query: string): Promise<Intent[]> {
-  console.log("Searching intents for query:", query)
+export async function searchIntents(query: string, page: number = 1, limit: number = 5, excludeUserId?: string): Promise<{ intents: Intent[]; totalCount: number; hasMore: boolean }> {
+  console.log("Searching intents for query:", query, "excluding user:", excludeUserId)
 
   try {
     // Sanitize the search query
     const sanitizedQuery = sanitizeInput(query || "");
     
-    // Get all intents from database for similarity search
+    // Get all intents from database for similarity search, excluding current user if provided
     const dbIntents = await prisma.intent.findMany({
-      where: { isActive: true },
+      where: { 
+        isActive: true,
+        ...(excludeUserId && { userId: { not: excludeUserId } })
+      },
       include: {
         user: true,
       },
     });
 
     if (!sanitizedQuery) {
-      console.log("Empty query, returning all intents")
-      // Transform to the expected format
-      return dbIntents.map((intent) => ({
+      console.log("Empty query, returning all intents with pagination")
+      const offset = (page - 1) * limit
+      const paginatedIntents = dbIntents.slice(offset, offset + limit)
+      
+      const transformedIntents = paginatedIntents.map((intent) => ({
         id: intent.id,
         text: intent.text,
         user: intent.user.username,
+        userId: intent.user.id,
         category: intent.category || undefined,
         location: intent.location || undefined,
         tags: intent.tags,
         isActive: intent.isActive,
         createdAt: intent.createdAt,
       }));
+      
+      return {
+        intents: transformedIntents,
+        totalCount: dbIntents.length,
+        hasMore: offset + limit < dbIntents.length
+      };
     }
 
     // Try semantic search first
@@ -61,12 +73,16 @@ export async function searchIntents(query: string): Promise<Intent[]> {
 
       if (semanticResults.length > 0) {
         console.log("Using semantic search results")
-        return semanticResults.map(result => {
+        const offset = (page - 1) * limit
+        const paginatedResults = semanticResults.slice(offset, offset + limit)
+        
+        const transformedResults = paginatedResults.map(result => {
           const dbIntent = dbIntents.find(intent => intent.id === result.id)!
           return {
             id: dbIntent.id,
             text: dbIntent.text,
             user: dbIntent.user.username,
+            userId: dbIntent.user.id,
             category: dbIntent.category || undefined,
             location: dbIntent.location || undefined,
             tags: dbIntent.tags,
@@ -75,6 +91,12 @@ export async function searchIntents(query: string): Promise<Intent[]> {
             similarity: result.similarity,
           }
         })
+        
+        return {
+          intents: transformedResults,
+          totalCount: semanticResults.length,
+          hasMore: offset + limit < semanticResults.length
+        };
       }
     } catch (semanticError) {
       console.warn("Semantic search failed, falling back to keyword search:", semanticError)
@@ -103,6 +125,7 @@ export async function searchIntents(query: string): Promise<Intent[]> {
           id: dbIntent.id,
           text: dbIntent.text,
           user: dbIntent.user.username,
+          userId: dbIntent.user.id,
           category: dbIntent.category || undefined,
           location: dbIntent.location || undefined,
           tags: dbIntent.tags,
@@ -113,19 +136,25 @@ export async function searchIntents(query: string): Promise<Intent[]> {
       }
     })
 
-    const results = similarities
+    const allResults = similarities
       .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, 10)
       .map((item) => ({
         ...item.intent,
         similarity: item.similarity,
       }))
 
-    console.log("Search results:", results)
-    return results
+    const offset = (page - 1) * limit
+    const paginatedResults = allResults.slice(offset, offset + limit)
+
+    console.log("Search results:", paginatedResults)
+    return {
+      intents: paginatedResults,
+      totalCount: allResults.length,
+      hasMore: offset + limit < allResults.length
+    }
   } catch (error) {
     console.error("Error in database search:", error)
-    return [] // Return empty array in case of error
+    return { intents: [], totalCount: 0, hasMore: false }
   }
 }
 
@@ -202,12 +231,15 @@ export async function createIntent(
   }
 }
 
-export async function getAllIntents(): Promise<Intent[]> {
-  console.log("Getting all intents from database")
+export async function getAllIntents(excludeUserId?: string): Promise<Intent[]> {
+  console.log("Getting all intents from database", excludeUserId ? `excluding user: ${excludeUserId}` : "")
   
   try {
     const dbIntents = await prisma.intent.findMany({
-      where: { isActive: true },
+      where: { 
+        isActive: true,
+        ...(excludeUserId && { userId: { not: excludeUserId } })
+      },
       include: {
         user: true,
       },
@@ -221,6 +253,7 @@ export async function getAllIntents(): Promise<Intent[]> {
       id: intent.id,
       text: intent.text,
       user: intent.user.username,
+      userId: intent.user.id,
       category: intent.category || undefined,
       location: intent.location || undefined,
       tags: intent.tags,
@@ -452,6 +485,337 @@ export async function findSimilarUsers(userId: string, interests: string[], loca
     return users as User[]
   } catch (error) {
     console.error("Error finding similar users:", error)
+    return []
+  }
+}
+
+// Friend management functions
+export async function addFriend(userId: string, friendId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    console.log("addFriend called with:", { userId, friendId })
+    
+    if (userId === friendId) {
+      return { success: false, message: "Cannot add yourself as friend" }
+    }
+
+    // Check if both users exist in the database
+    const [requester, receiver] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true } }),
+      prisma.user.findUnique({ where: { id: friendId }, select: { id: true, username: true } })
+    ])
+    
+    console.log("Users found:", { requester, receiver })
+    
+    if (!requester) {
+      console.error("Requester not found in database:", userId)
+      return { success: false, message: "Your user account not found" }
+    }
+    
+    if (!receiver) {
+      console.error("Receiver not found in database:", friendId)
+      return { success: false, message: "Target user not found" }
+    }
+
+    // Check if connection already exists
+    const existingConnection = await prisma.connection.findFirst({
+      where: {
+        OR: [
+          { requesterId: userId, receiverId: friendId },
+          { requesterId: friendId, receiverId: userId }
+        ]
+      }
+    })
+
+    if (existingConnection) {
+      if (existingConnection.status === 'ACCEPTED') {
+        return { success: false, message: "Already friends" }
+      } else if (existingConnection.status === 'PENDING') {
+        return { success: false, message: "Friend request already sent" }
+      } else if (existingConnection.status === 'BLOCKED') {
+        return { success: false, message: "Cannot add this user" }
+      }
+    }
+
+    // Send friend request (create connection)
+    const result = await sendConnectionRequest(userId, friendId)
+    return result
+  } catch (error) {
+    console.error("Error adding friend:", error)
+    return { success: false, message: "Failed to send friend request" }
+  }
+}
+
+export async function removeFriend(userId: string, friendId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const connection = await prisma.connection.findFirst({
+      where: {
+        OR: [
+          { requesterId: userId, receiverId: friendId },
+          { requesterId: friendId, receiverId: userId }
+        ],
+        status: 'ACCEPTED'
+      }
+    })
+
+    if (!connection) {
+      return { success: false, message: "Not friends with this user" }
+    }
+
+    await prisma.connection.delete({
+      where: { id: connection.id }
+    })
+
+    revalidatePath("/connections")
+    revalidatePath("/profile")
+    return { success: true, message: "Friend removed successfully" }
+  } catch (error) {
+    console.error("Error removing friend:", error)
+    return { success: false, message: "Failed to remove friend" }
+  }
+}
+
+export async function getFriends(userId: string): Promise<User[]> {
+  try {
+    const connections = await prisma.connection.findMany({
+      where: {
+        OR: [
+          { requesterId: userId },
+          { receiverId: userId }
+        ],
+        status: 'ACCEPTED'
+      },
+      include: {
+        requester: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            bio: true,
+            avatar: true,
+            location: true,
+            interests: true,
+            isActive: true,
+            lastSeen: true,
+            createdAt: true
+          }
+        },
+        receiver: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            bio: true,
+            avatar: true,
+            location: true,
+            interests: true,
+            isActive: true,
+            lastSeen: true,
+            createdAt: true
+          }
+        }
+      }
+    })
+
+    // Extract the friend (the other user in each connection)
+    const friends = connections.map(conn => {
+      return conn.requesterId === userId ? conn.receiver : conn.requester
+    })
+
+    return friends as User[]
+  } catch (error) {
+    console.error("Error fetching friends:", error)
+    return []
+  }
+}
+
+export async function getUserActivities(userId: string): Promise<Intent[]> {
+  try {
+    const activities = await prisma.intent.findMany({
+      where: {
+        userId: userId,
+        isActive: true
+      },
+      include: {
+        user: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+
+    return activities.map(activity => ({
+      id: activity.id,
+      text: activity.text,
+      user: activity.user.username,
+      userId: activity.user.id,
+      category: activity.category || undefined,
+      location: activity.location || undefined,
+      tags: activity.tags,
+      isActive: activity.isActive,
+      createdAt: activity.createdAt
+    }))
+  } catch (error) {
+    console.error("Error fetching user activities:", error)
+    return []
+  }
+}
+
+// Check connection status between two users
+export async function getConnectionStatus(userId1: string, userId2: string): Promise<{
+  status: 'none' | 'pending_sent' | 'pending_received' | 'friends' | 'blocked'
+  connectionId?: string
+}> {
+  try {
+    const connection = await prisma.connection.findFirst({
+      where: {
+        OR: [
+          { requesterId: userId1, receiverId: userId2 },
+          { requesterId: userId2, receiverId: userId1 }
+        ]
+      }
+    })
+
+    if (!connection) {
+      return { status: 'none' }
+    }
+
+    if (connection.status === 'ACCEPTED') {
+      return { status: 'friends', connectionId: connection.id }
+    }
+
+    if (connection.status === 'BLOCKED') {
+      return { status: 'blocked', connectionId: connection.id }
+    }
+
+    if (connection.status === 'PENDING') {
+      if (connection.requesterId === userId1) {
+        return { status: 'pending_sent', connectionId: connection.id }
+      } else {
+        return { status: 'pending_received', connectionId: connection.id }
+      }
+    }
+
+    return { status: 'none' }
+  } catch (error) {
+    console.error("Error checking connection status:", error)
+    return { status: 'none' }
+  }
+}
+
+// Get pending friend requests for a user
+export async function getPendingRequests(userId: string): Promise<Connection[]> {
+  try {
+    const connections = await prisma.connection.findMany({
+      where: {
+        receiverId: userId,
+        status: 'PENDING'
+      },
+      include: {
+        requester: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            bio: true,
+            location: true,
+            interests: true,
+            isActive: true,
+            lastSeen: true,
+            createdAt: true
+          }
+        },
+        receiver: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            bio: true,
+            location: true,
+            interests: true,
+            isActive: true,
+            lastSeen: true,
+            createdAt: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+
+    return connections.map(conn => ({
+      id: conn.id,
+      status: conn.status as any,
+      requester: conn.requester as User,
+      receiver: conn.receiver as User,
+      createdAt: conn.createdAt
+    }))
+  } catch (error) {
+    console.error("Error fetching pending requests:", error)
+    return []
+  }
+}
+
+// Get sent friend requests for a user
+export async function getSentRequests(userId: string): Promise<Connection[]> {
+  try {
+    const connections = await prisma.connection.findMany({
+      where: {
+        requesterId: userId,
+        status: 'PENDING'
+      },
+      include: {
+        requester: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            bio: true,
+            location: true,
+            interests: true,
+            isActive: true,
+            lastSeen: true,
+            createdAt: true
+          }
+        },
+        receiver: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            bio: true,
+            location: true,
+            interests: true,
+            isActive: true,
+            lastSeen: true,
+            createdAt: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+
+    return connections.map(conn => ({
+      id: conn.id,
+      status: conn.status as any,
+      requester: conn.requester as User,
+      receiver: conn.receiver as User,
+      createdAt: conn.createdAt
+    }))
+  } catch (error) {
+    console.error("Error fetching sent requests:", error)
     return []
   }
 }

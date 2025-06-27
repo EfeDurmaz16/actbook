@@ -19,7 +19,11 @@ export async function POST(request: Request) {
 
     // Simple password check (in a real app, use proper password hashing)
     if (user && user.password === password) {
-      return NextResponse.json({ success: true, username: user.username });
+      return NextResponse.json({ 
+        success: true, 
+        username: user.username,
+        userId: user.id 
+      });
     }
 
     return NextResponse.json(

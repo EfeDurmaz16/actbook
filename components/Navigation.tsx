@@ -1,65 +1,58 @@
-"use client"
+"use client";
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { useAuth } from '@/lib/AuthContext'
-import { cn } from '@/lib/utils'
-import { 
-  Home, 
-  Search, 
-  Users, 
-  User,
-  Activity,
-  Bell
-} from 'lucide-react'
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useAuth } from "@/lib/AuthContext";
+import { cn } from "@/lib/utils";
+import { Home, Search, Users, User, Activity, Bell } from "lucide-react";
 
 const navigationItems = [
   {
-    name: 'Home',
-    href: '/',
+    name: "Home",
+    href: "/",
     icon: Home,
-    authRequired: false
+    authRequired: false,
   },
   {
-    name: 'Search',
-    href: '/search',
+    name: "Search",
+    href: "/search",
     icon: Search,
-    authRequired: false
+    authRequired: false,
   },
   {
-    name: 'Connections',
-    href: '/connections',
+    name: "Connections",
+    href: "/connections",
     icon: Users,
-    authRequired: true
+    authRequired: true,
   },
   {
-    name: 'Activities',
-    href: '/activities',
+    name: "Activities",
+    href: "/activities",
     icon: Activity,
-    authRequired: true
+    authRequired: true,
   },
   {
-    name: 'Profile',
-    href: '/profile',
+    name: "Profile",
+    href: "/profile",
     icon: User,
-    authRequired: true
-  }
-]
+    authRequired: true,
+  },
+];
 
 export function Navigation() {
-  const pathname = usePathname()
-  const { isAuthenticated } = useAuth()
+  const pathname = usePathname();
+  const { isAuthenticated } = useAuth();
 
-  const visibleItems = navigationItems.filter(item => 
-    !item.authRequired || isAuthenticated
-  )
+  const visibleItems = navigationItems.filter(
+    (item) => !item.authRequired || isAuthenticated
+  );
 
   return (
-    <nav className="flex items-center space-x-1">
+    <nav className="flex items-center space-x-4 mr-4">
       {visibleItems.map((item) => {
-        const Icon = item.icon
-        const isActive = pathname === item.href
-        
+        const Icon = item.icon;
+        const isActive = pathname === item.href;
+
         return (
           <Link
             key={item.name}
@@ -74,8 +67,8 @@ export function Navigation() {
             <Icon className="h-4 w-4" />
             <span className="hidden sm:block">{item.name}</span>
           </Link>
-        )
+        );
       })}
     </nav>
-  )
+  );
 }

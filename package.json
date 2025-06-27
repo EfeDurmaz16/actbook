@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate --no-engine",
-    "vercel-build": "prisma generate && next build"
+    "vercel-build": "prisma generate && next build",
+    "generate-embeddings": "tsx scripts/generate-embeddings.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -47,11 +48,13 @@
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "date-fns": "^3.6.0",
+    "dotenv": "^16.6.0",
     "embla-carousel-react": "8.5.1",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
     "next": "^14.2.16",
     "next-themes": "^0.4.4",
+    "openai": "^5.8.1",
     "pg": "^8.11.3",
     "prisma": "6.4.1",
     "react": "^18",
@@ -64,6 +67,7 @@
     "string-similarity-js": "latest",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.20.3",
     "vaul": "^0.9.6",
     "zod": "^3.24.1"
   },

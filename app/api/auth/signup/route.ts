@@ -34,7 +34,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ 
       success: true, 
-      username: newUser.username 
+      username: newUser.username,
+      userId: newUser.id 
     });
   } catch (error) {
     console.error("Signup API error:", error);

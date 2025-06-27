@@ -20,7 +20,7 @@ import {
   Calendar,
   MessageCircle
 } from 'lucide-react'
-import { getUserConnections, sendConnectionRequest, respondToConnectionRequest, findSimilarUsers } from '@/lib/actions'
+import { getUserConnections, sendConnectionRequest, respondToConnectionRequest, findSimilarUsers, getPendingRequests, getSentRequests } from '@/lib/actions'
 
 interface User {
   id: string
@@ -47,6 +47,8 @@ interface Connection {
 export default function ConnectionsPage() {
   const { userId, username } = useAuth()
   const [connections, setConnections] = useState<Connection[]>([])
+  const [pendingRequests, setPendingRequests] = useState<Connection[]>([])
+  const [sentRequests, setSentRequests] = useState<Connection[]>([])
   const [suggestedUsers, setSuggestedUsers] = useState<User[]>([])
   const [searchUsers, setSearchUsers] = useState<User[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -70,8 +72,15 @@ export default function ConnectionsPage() {
 
   const fetchConnections = async () => {
     try {
-      const userConnections = await getUserConnections(userId!)
+      const [userConnections, receivedRequests, userSentRequests] = await Promise.all([
+        getUserConnections(userId!, 'ACCEPTED'),
+        getPendingRequests(userId!),
+        getSentRequests(userId!)
+      ])
+      
       setConnections(userConnections)
+      setPendingRequests(receivedRequests)
+      setSentRequests(userSentRequests)
     } catch (error) {
       console.error('Error fetching connections:', error)
     }
@@ -128,9 +137,13 @@ export default function ConnectionsPage() {
 
   const handleRespondToConnection = async (connectionId: string, status: 'ACCEPTED' | 'REJECTED') => {
     try {
+      console.log('Responding to connection:', { connectionId, status, userId })
       const result = await respondToConnectionRequest(connectionId, userId!, status)
+      console.log('Response result:', result)
       if (result.success) {
         fetchConnections()
+      } else {
+        console.error('Failed to respond to connection:', result.message)
       }
     } catch (error) {
       console.error('Error responding to connection:', error)
@@ -138,10 +151,28 @@ export default function ConnectionsPage() {
   }
 
   const getConnectionStatus = (user: User) => {
-    const connection = connections.find(conn => 
+    // Check in accepted connections
+    let connection = connections.find(conn => 
       (conn.requester.id === user.id && conn.receiver.id === userId) ||
       (conn.receiver.id === user.id && conn.requester.id === userId)
     )
+    
+    // If not found, check in pending requests
+    if (!connection) {
+      connection = pendingRequests.find(conn => 
+        (conn.requester.id === user.id && conn.receiver.id === userId) ||
+        (conn.receiver.id === user.id && conn.requester.id === userId)
+      )
+    }
+    
+    // If still not found, check in sent requests
+    if (!connection) {
+      connection = sentRequests.find(conn => 
+        (conn.requester.id === user.id && conn.receiver.id === userId) ||
+        (conn.receiver.id === user.id && conn.requester.id === userId)
+      )
+    }
+    
     return connection
   }
 
@@ -230,7 +261,7 @@ export default function ConnectionsPage() {
                 </p>
               )}
               
-              {user.interests.length > 0 && (
+              {user.interests && user.interests.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {user.interests.slice(0, 3).map((interest, index) => (
                     <Badge key={index} variant="outline" className="text-xs">
@@ -251,13 +282,7 @@ export default function ConnectionsPage() {
     )
   }
 
-  const friends = connections.filter(conn => conn.status === 'ACCEPTED')
-  const pendingRequests = connections.filter(conn => 
-    conn.status === 'PENDING' && conn.receiver.id === userId
-  )
-  const sentRequests = connections.filter(conn => 
-    conn.status === 'PENDING' && conn.requester.id === userId
-  )
+  const friends = connections // Already filtered to ACCEPTED in fetchConnections
 
   if (loading) {
     return (
